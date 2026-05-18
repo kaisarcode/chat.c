@@ -28,7 +28,7 @@
 #define KC_CHAT_STDIN_FD STDIN_FILENO
 #endif
 
-#define KC_CHAT_VERSION "0.1.0"
+#define KC_CHAT_VERSION "1.0.0"
 
 #define KC_CHAT_DEFAULT_PROMPT "> "
 #define KC_CHAT_DEFAULT_EXIT   "exit"
