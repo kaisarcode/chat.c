@@ -28,7 +28,7 @@
 #define KC_CHAT_STDIN_FD STDIN_FILENO
 #endif
 
-#define KC_CHAT_VERSION "1.0.0"
+#define KC_CHAT_VERSION "1.1.0"
 
 #define KC_CHAT_DEFAULT_PROMPT "> "
 #define KC_CHAT_DEFAULT_EXIT   "exit"
@@ -223,13 +223,11 @@ static void kc_print_version(void) {
  * @return Process status code.
  */
 int main(int argc, char **argv) {
-    kc_chat_t *ctx;
-    const char *cmd = NULL;
-    const char *end_token = NULL;
-    const char *exit_cmd = KC_CHAT_DEFAULT_EXIT;
-    const char *prompt = KC_CHAT_DEFAULT_PROMPT;
-    const char *msg = NULL;
+    kc_chat_options_t opts = kc_chat_options_default();
+    kc_chat_t *ctx = NULL;
     int i;
+
+    kc_chat_options_load_env(&opts);
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -251,13 +249,22 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        cmd = argv[i];
+        free(opts.cmd);
+        opts.cmd = strdup(argv[i]);
         break;
     }
 
-    if (!cmd) {
+    if (!opts.cmd) {
         kc_print_help(argv[0]);
+        kc_chat_options_free(&opts);
         return 1;
+    }
+
+    if (!opts.exit_cmd) {
+        opts.exit_cmd = strdup(KC_CHAT_DEFAULT_EXIT);
+    }
+    if (!opts.prompt) {
+        opts.prompt = strdup(KC_CHAT_DEFAULT_PROMPT);
     }
 
     for (i = 1; i < argc; i++) {
@@ -276,53 +283,56 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "-e") == 0) {
             if (++i >= argc) {
                 fprintf(stderr, "chat: missing value for -e\n");
+                kc_chat_options_free(&opts);
                 return 1;
             }
-            end_token = argv[i];
+            free(opts.end_token);
+            opts.end_token = strdup(argv[i]);
         } else if (strcmp(argv[i], "-x") == 0) {
             if (++i >= argc) {
                 fprintf(stderr, "chat: missing value for -x\n");
+                kc_chat_options_free(&opts);
                 return 1;
             }
-            exit_cmd = argv[i];
+            free(opts.exit_cmd);
+            opts.exit_cmd = strdup(argv[i]);
         } else if (strcmp(argv[i], "-m") == 0) {
             if (++i >= argc) {
                 fprintf(stderr, "chat: missing value for -m\n");
+                kc_chat_options_free(&opts);
                 return 1;
             }
-            msg = argv[i];
+            free(opts.msg);
+            opts.msg = strdup(argv[i]);
         } else if (strcmp(argv[i], "-p") == 0) {
             if (++i >= argc) {
                 fprintf(stderr, "chat: missing value for -p\n");
+                kc_chat_options_free(&opts);
                 return 1;
             }
-            prompt = argv[i];
+            free(opts.prompt);
+            opts.prompt = strdup(argv[i]);
         } else {
             fprintf(stderr, "chat: unknown option '%s'\n", argv[i]);
+            kc_chat_options_free(&opts);
             return 1;
         }
     }
 
-    ctx = kc_chat_open();
-    if (!ctx) {
+    if (kc_chat_open(&ctx, &opts) != KC_CHAT_OK) {
         fprintf(stderr, "chat: out of memory\n");
+        kc_chat_options_free(&opts);
         return 1;
     }
 
-    if (kc_chat_set_cmd(ctx, cmd) != KC_CHAT_OK) {
-        fprintf(stderr, "chat: out of memory\n");
-        kc_chat_close(ctx);
-        return 1;
-    }
+    kc_chat_listen_signals(ctx);
+#ifndef _WIN32
+    kc_chat_listen_signal(ctx, 2);
+    kc_chat_listen_signal(ctx, 15);
+#endif
 
-    if (kc_chat_set_exit(ctx, exit_cmd) != KC_CHAT_OK) {
-        fprintf(stderr, "chat: out of memory\n");
-        kc_chat_close(ctx);
-        return 1;
-    }
-
-    if (msg && *msg) {
-        printf("%s\n", msg);
+    if (opts.msg && *opts.msg) {
+        printf("%s\n", opts.msg);
     }
 
     for (;;) {
@@ -330,14 +340,15 @@ int main(int argc, char **argv) {
         char *output = NULL;
         int rc;
 
-        printf("%s", prompt);
+        printf("%s", opts.prompt);
         fflush(stdout);
 
-        rc = kc_chat_read_input(end_token, &input);
+        rc = kc_chat_read_input(opts.end_token, &input);
 
         if (rc < 0) {
             fprintf(stderr, "chat: failed to read input\n");
             kc_chat_close(ctx);
+            kc_chat_options_free(&opts);
             return 1;
         }
 
@@ -345,7 +356,7 @@ int main(int argc, char **argv) {
             break;
         }
 
-        if (!end_token || !*end_token) {
+        if (!opts.end_token || !*opts.end_token) {
             if (kc_chat_is_exit(ctx, input)) {
                 free(input);
                 break;
@@ -355,6 +366,7 @@ int main(int argc, char **argv) {
         if (kc_chat_exec(ctx, input, &output) != KC_CHAT_OK) {
             kc_chat_free(input);
             kc_chat_close(ctx);
+            kc_chat_options_free(&opts);
             return 1;
         }
 
@@ -367,5 +379,6 @@ int main(int argc, char **argv) {
     }
 
     kc_chat_close(ctx);
+    kc_chat_options_free(&opts);
     return 0;
 }

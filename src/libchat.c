@@ -22,20 +22,76 @@
 #ifndef _WIN32
 #include <sys/wait.h>
 #include <unistd.h>
+#include <signal.h>
+#else
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
+#include <stddef.h>
+
+typedef enum {
+    KC_ENV_TYPE_INT,
+    KC_ENV_TYPE_FLOAT,
+    KC_ENV_TYPE_STR
+} kc_env_type_t;
+
+typedef struct {
+    const char *env_var;
+    size_t offset;
+    kc_env_type_t type;
+} kc_env_map_t;
+
+static const kc_env_map_t env_config_table[] = {
+    { "KC_CHAT_CMD",       offsetof(kc_chat_options_t, cmd),       KC_ENV_TYPE_STR },
+    { "KC_CHAT_END_TOKEN", offsetof(kc_chat_options_t, end_token), KC_ENV_TYPE_STR },
+    { "KC_CHAT_EXIT_CMD",  offsetof(kc_chat_options_t, exit_cmd),  KC_ENV_TYPE_STR },
+    { "KC_CHAT_MSG",       offsetof(kc_chat_options_t, msg),       KC_ENV_TYPE_STR },
+    { "KC_CHAT_PROMPT",    offsetof(kc_chat_options_t, prompt),    KC_ENV_TYPE_STR },
+};
+static const int env_config_table_n =
+    sizeof(env_config_table) / sizeof(env_config_table[0]);
+
+typedef struct {
+    int sig;
+    kc_chat_signal_callback_t cb;
+} kc_chat_signal_entry_t;
+
+static kc_chat_t *g_signal_ctx = NULL;
 
 struct kc_chat {
-    char *cmd;
-    char *exit_cmd;
+    kc_chat_options_t opts;
+    kc_chat_signal_entry_t *signal_handlers;
+    int n_signal_handlers;
+    int signal_handlers_capacity;
 };
 
 /**
  * Initialize a new chat context.
- * @param none Unused.
- * @return Context pointer or NULL on failure.
+ * @param out Pointer to receive the context pointer.
+ * @param opts Options.
+ * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on failure.
  */
-kc_chat_t *kc_chat_open(void) {
-    return (kc_chat_t *)calloc(1, sizeof(kc_chat_t));
+int kc_chat_open(kc_chat_t **out, const kc_chat_options_t *opts) {
+    kc_chat_t *ctx;
+
+    if (!out || !opts) {
+        return KC_CHAT_ERROR;
+    }
+
+    ctx = (kc_chat_t *)calloc(1, sizeof(kc_chat_t));
+    if (!ctx) {
+        return KC_CHAT_ERROR;
+    }
+
+    ctx->opts = *opts;
+    ctx->opts.cmd = opts->cmd ? strdup(opts->cmd) : NULL;
+    ctx->opts.end_token = opts->end_token ? strdup(opts->end_token) : NULL;
+    ctx->opts.exit_cmd = opts->exit_cmd ? strdup(opts->exit_cmd) : NULL;
+    ctx->opts.msg = opts->msg ? strdup(opts->msg) : NULL;
+    ctx->opts.prompt = opts->prompt ? strdup(opts->prompt) : NULL;
+
+    *out = ctx;
+    return KC_CHAT_OK;
 }
 
 /**
@@ -48,55 +104,9 @@ void kc_chat_close(kc_chat_t *ctx) {
         return;
     }
 
-    free(ctx->cmd);
-    free(ctx->exit_cmd);
+    kc_chat_options_free(&ctx->opts);
+    free(ctx->signal_handlers);
     free(ctx);
-}
-
-/**
- * Set the command to delegate input to.
- * @param ctx Context pointer.
- * @param cmd Shell command string.
- * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on invalid input.
- */
-int kc_chat_set_cmd(kc_chat_t *ctx, const char *cmd) {
-    char *dup;
-
-    if (!ctx || !cmd) {
-        return KC_CHAT_ERROR;
-    }
-
-    dup = strdup(cmd);
-    if (!dup) {
-        return KC_CHAT_ERROR;
-    }
-
-    free(ctx->cmd);
-    ctx->cmd = dup;
-    return KC_CHAT_OK;
-}
-
-/**
- * Set the exit command text.
- * @param ctx Context pointer.
- * @param exit_cmd Exit command string.
- * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on invalid input.
- */
-int kc_chat_set_exit(kc_chat_t *ctx, const char *exit_cmd) {
-    char *dup;
-
-    if (!ctx || !exit_cmd) {
-        return KC_CHAT_ERROR;
-    }
-
-    dup = strdup(exit_cmd);
-    if (!dup) {
-        return KC_CHAT_ERROR;
-    }
-
-    free(ctx->exit_cmd);
-    ctx->exit_cmd = dup;
-    return KC_CHAT_OK;
 }
 
 /**
@@ -185,7 +195,7 @@ int kc_chat_exec(kc_chat_t *ctx, const char *input, char **output) {
     size_t written;
     ssize_t nw;
 
-    if (!ctx || !ctx->cmd || !input || !output) {
+    if (!ctx || !ctx->opts.cmd || !input || !output) {
         return KC_CHAT_ERROR;
     }
 
@@ -225,7 +235,7 @@ int kc_chat_exec(kc_chat_t *ctx, const char *input, char **output) {
 
         close(stdin_pipe[0]);
         close(stdout_pipe[1]);
-        execl("/bin/sh", "sh", "-c", ctx->cmd, (char *)NULL);
+        execl("/bin/sh", "sh", "-c", ctx->opts.cmd, (char *)NULL);
         _exit(1);
     }
 
@@ -283,11 +293,11 @@ int kc_chat_exec(kc_chat_t *ctx, const char *input, char **output) {
  * @return 1 if input matches exit command, 0 otherwise.
  */
 int kc_chat_is_exit(kc_chat_t *ctx, const char *input) {
-    if (!ctx || !ctx->exit_cmd || !input) {
+    if (!ctx || !ctx->opts.exit_cmd || !input) {
         return 0;
     }
 
-    return strcmp(input, ctx->exit_cmd) == 0;
+    return strcmp(input, ctx->opts.exit_cmd) == 0;
 }
 
 /**
@@ -297,4 +307,207 @@ int kc_chat_is_exit(kc_chat_t *ctx, const char *input) {
  */
 void kc_chat_free(char *text) {
     free(text);
+}
+
+/**
+ * Create an options struct initialized with default values.
+ * @param none Unused.
+ * @return Default-initialized options.
+ */
+kc_chat_options_t kc_chat_options_default(void) {
+    kc_chat_options_t opts;
+    memset(&opts, 0, sizeof(opts));
+    return opts;
+}
+
+/**
+ * Load configuration from environment variables.
+ * @param opts Options to update.
+ * @return None.
+ */
+void kc_chat_options_load_env(kc_chat_options_t *opts) {
+    int i;
+
+    if (!opts) {
+        return;
+    }
+
+    for (i = 0; i < env_config_table_n; i++) {
+        const char *val = getenv(env_config_table[i].env_var);
+        char *end;
+
+        if (!val) {
+            continue;
+        }
+
+        switch (env_config_table[i].type) {
+            case KC_ENV_TYPE_INT: {
+                long v = strtol(val, &end, 10);
+                if (end != val && *end == '\0') {
+                    *(int *)((char *)opts + env_config_table[i].offset) = (int)v;
+                }
+                break;
+            }
+            case KC_ENV_TYPE_FLOAT: {
+                float v = strtof(val, &end);
+                if (end != val && *end == '\0') {
+                    *(float *)((char *)opts + env_config_table[i].offset) = v;
+                }
+                break;
+            }
+            case KC_ENV_TYPE_STR: {
+                char **p = (char **)((char *)opts + env_config_table[i].offset);
+                free(*p);
+                *p = strdup(val);
+                break;
+            }
+        }
+    }
+}
+
+/**
+ * Free dynamically allocated resources within an options struct.
+ * @param opts Options to clean up.
+ * @return None.
+ */
+void kc_chat_options_free(kc_chat_options_t *opts) {
+    if (!opts) {
+        return;
+    }
+
+    free(opts->cmd);
+    opts->cmd = NULL;
+    free(opts->end_token);
+    opts->end_token = NULL;
+    free(opts->exit_cmd);
+    opts->exit_cmd = NULL;
+    free(opts->msg);
+    opts->msg = NULL;
+    free(opts->prompt);
+    opts->prompt = NULL;
+}
+
+/**
+ * Register a handler for a library-level signal number.
+ * @param ctx Chat context.
+ * @param sig Application-defined signal number.
+ * @param cb Callback to invoke.
+ * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on failure.
+ */
+int kc_chat_on_signal(kc_chat_t *ctx, int sig, kc_chat_signal_callback_t cb) {
+    int i;
+
+    if (!ctx) {
+        return KC_CHAT_ERROR;
+    }
+
+    for (i = 0; i < ctx->n_signal_handlers; i++) {
+        if (ctx->signal_handlers[i].sig == sig) {
+            if (cb) {
+                ctx->signal_handlers[i].cb = cb;
+            } else {
+                int tail = ctx->n_signal_handlers - i - 1;
+                if (tail > 0) {
+                    memmove(&ctx->signal_handlers[i],
+                            &ctx->signal_handlers[i + 1],
+                            (size_t)tail * sizeof(kc_chat_signal_entry_t));
+                }
+                ctx->n_signal_handlers--;
+            }
+            return KC_CHAT_OK;
+        }
+    }
+
+    if (!cb) {
+        return KC_CHAT_OK;
+    }
+
+    if (ctx->n_signal_handlers >= ctx->signal_handlers_capacity) {
+        int new_cap = ctx->signal_handlers_capacity ? ctx->signal_handlers_capacity * 2 : 4;
+        kc_chat_signal_entry_t *p = (kc_chat_signal_entry_t *)realloc(ctx->signal_handlers,
+            (size_t)new_cap * sizeof(kc_chat_signal_entry_t));
+
+        if (!p) {
+            return KC_CHAT_ERROR;
+        }
+
+        ctx->signal_handlers = p;
+        ctx->signal_handlers_capacity = new_cap;
+    }
+
+    ctx->signal_handlers[ctx->n_signal_handlers].sig = sig;
+    ctx->signal_handlers[ctx->n_signal_handlers].cb = cb;
+    ctx->n_signal_handlers++;
+
+    return KC_CHAT_OK;
+}
+
+/**
+ * Raise a library-level signal.
+ * @param ctx Chat context.
+ * @param sig Signal number to raise.
+ * @return KC_CHAT_OK if handled, or KC_CHAT_ERROR if no handler.
+ */
+int kc_chat_raise_signal(kc_chat_t *ctx, int sig) {
+    int i;
+
+    if (!ctx) {
+        return KC_CHAT_ERROR;
+    }
+
+    for (i = 0; i < ctx->n_signal_handlers; i++) {
+        if (ctx->signal_handlers[i].sig == sig) {
+            ctx->signal_handlers[i].cb(ctx);
+            return KC_CHAT_OK;
+        }
+    }
+
+    return KC_CHAT_ERROR;
+}
+
+/**
+ * Set the internal signal-listener context.
+ * @param ctx Chat context.
+ * @return KC_CHAT_OK on success, or KC_CHAT_ERROR if ctx is NULL.
+ */
+int kc_chat_listen_signals(kc_chat_t *ctx) {
+    if (!ctx) {
+        return KC_CHAT_ERROR;
+    }
+
+    g_signal_ctx = ctx;
+    return KC_CHAT_OK;
+}
+
+/**
+ * Wire an OS signal to the library signal listener.
+ * @param ctx Chat context.
+ * @param sig_id OS signal number.
+ * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on failure.
+ */
+int kc_chat_listen_signal(kc_chat_t *ctx, int sig_id) {
+    if (!ctx) {
+        return KC_CHAT_ERROR;
+    }
+
+    g_signal_ctx = ctx;
+
+#ifdef _WIN32
+    (void)sig_id;
+#else
+    signal(sig_id, kc_chat_signal_listener);
+#endif
+
+    return KC_CHAT_OK;
+}
+
+/**
+ * Generic signal-listener compatible with signal() / sigaction().
+ * @param sig OS signal number.
+ * @return None.
+ */
+void kc_chat_signal_listener(int sig) {
+    if (g_signal_ctx) {
+        kc_chat_raise_signal(g_signal_ctx, sig);
+    }
 }

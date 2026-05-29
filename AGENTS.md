@@ -54,7 +54,7 @@ Three-file split: `chat.h` exposes the opaque `kc_chat_t` type and lifecycle/con
 | `-m <text>` | Initial message printed at start |
 | `-p <text>` | Prompt text (default: `> `) |
 | `-h`, `--help` | Print usage and exit 0 |
-| `-v`, `--version` | Print version (`chat 0.1.0`) and exit 0 |
+| `-v`, `--version` | Print version (`chat 1.1.0`) and exit 0 |
 
 ### Exit Codes
 | Code | Meaning |
