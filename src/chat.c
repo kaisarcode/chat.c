@@ -204,7 +204,7 @@ static void kc_print_help(const char *name) {
     printf("    -x <text>      Exit command (default: exit)\n");
     printf("    -m <text>      Initial message\n");
     printf("    -p <text>      Prompt text (default: > )\n");
-    printf("    -h, --help     Show this help message\n");
+    printf("    -h, --help     Show this help\n");
     printf("    -v, --version  Show version\n");
 }
 
