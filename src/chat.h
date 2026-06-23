@@ -10,6 +10,8 @@
 #ifndef KC_CHAT_H
 #define KC_CHAT_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -151,6 +153,12 @@ int kc_chat_listen_signal(kc_chat_t *ctx, int sig_id);
  * @return None.
  */
 void kc_chat_signal_listener(int sig);
+
+/**
+ * Returns the build version generated at compile time.
+ * @return Unix timestamp for the current build.
+ */
+uint64_t kc_chat_version(void);
 
 #ifdef __cplusplus
 }

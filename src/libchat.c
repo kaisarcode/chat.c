@@ -29,6 +29,19 @@
 #include <windows.h>
 #endif
 #include <stddef.h>
+#include <stdint.h>
+
+#ifndef KC_CHAT_BUILD_VERSION
+#define KC_CHAT_BUILD_VERSION 0
+#endif
+
+/**
+ * Returns the build version generated at compile time.
+ * @return Unix timestamp for the current build.
+ */
+uint64_t kc_chat_version(void) {
+    return (uint64_t)KC_CHAT_BUILD_VERSION;
+}
 
 typedef enum {
     KC_ENV_TYPE_INT,

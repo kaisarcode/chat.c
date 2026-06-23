@@ -1,5 +1,5 @@
 #!/bin/sh
-# test.sh
+# Chat validation and functional test harness
 # Summary: Validation suite for chat functionality.
 # Author:  KaisarCode
 # Website: https://kaisarcode.com

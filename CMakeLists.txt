@@ -3,6 +3,9 @@ project(chat C)
 
 set(CMAKE_C_STANDARD 11)
 
+if(NOT DEFINED CHAT_BUILD_VERSION)
+    set(CHAT_BUILD_VERSION 0)
+endif()
 
 option(CHAT_NATIVE "Enable native hardware optimizations" OFF)
 
@@ -15,6 +18,10 @@ if(NOT MSVC)
 else()
     add_compile_options(/O2 /W3 /WX)
 endif()
+
+set_source_files_properties(src/libchat.c PROPERTIES
+    COMPILE_DEFINITIONS KC_CHAT_BUILD_VERSION=${CHAT_BUILD_VERSION}
+)
 
 # Main executable
 add_executable(chat

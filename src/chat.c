@@ -28,8 +28,6 @@
 #define KC_CHAT_STDIN_FD STDIN_FILENO
 #endif
 
-#define KC_CHAT_VERSION "1.1.1"
-
 #define KC_CHAT_DEFAULT_PROMPT "> "
 #define KC_CHAT_DEFAULT_EXIT   "exit"
 
@@ -213,7 +211,7 @@ static void kc_print_help(const char *name) {
  * @return None.
  */
 static void kc_print_version(void) {
-    printf("chat %s\n", KC_CHAT_VERSION);
+    printf("chat build %llu\n", (unsigned long long)kc_chat_version());
 }
 
 /**
