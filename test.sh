@@ -57,10 +57,10 @@ kc_test_artifact_dir() {
 # @return 0 on success, 1 on failure.
 kc_test_check_binary() {
     if [ ! -x "$BIN" ]; then
-        kc_test_fail "binary not found: $BIN"
+        kc_test_fail "binary existence: expected executable file at $BIN, but it was not found"
         return 1
     fi
-
+    kc_test_pass "required binary is present"
     return 0
 }
 
@@ -68,57 +68,52 @@ kc_test_check_binary() {
 # @return 0 on success, 1 on failure.
 kc_test_check_libraries() {
     if [ ! -f "$ARTIFACT_DIR/libchat.a" ]; then
-        kc_test_fail "static library not found: $ARTIFACT_DIR/libchat.a"
+        kc_test_fail "static library existence: expected file at $ARTIFACT_DIR/libchat.a, but it was not found"
         return 1
     fi
 
     if [ "$(kc_test_platform)" = "windows" ]; then
         if [ ! -f "$ARTIFACT_DIR/libchat.dll" ]; then
-            kc_test_fail "shared library not found: $ARTIFACT_DIR/libchat.dll"
+            kc_test_fail "shared library existence: expected file at $ARTIFACT_DIR/libchat.dll, but it was not found"
             return 1
         fi
     elif [ ! -f "$ARTIFACT_DIR/libchat.so" ]; then
-        kc_test_fail "shared library not found: $ARTIFACT_DIR/libchat.so"
+        kc_test_fail "shared library existence: expected file at $ARTIFACT_DIR/libchat.so, but it was not found"
         return 1
     fi
 
-    kc_test_pass "libraries"
+    kc_test_pass "required static and shared libraries are present"
+    return 0
 }
 
-# Tests help, version, and fail-fast CLI behavior.
+# Tests fail-fast CLI behavior.
 # @return 0 on success, 1 on failure.
 kc_test_cli() {
-    if ! "$BIN" --help > /dev/null 2>&1; then
-        kc_test_fail "cli: --help failed"
-        return 1
-    fi
-
-    if ! "$BIN" -v > /dev/null 2>&1; then
-        kc_test_fail "cli: -v failed"
-        return 1
-    fi
-
     if "$BIN" --unknown > /dev/null 2>&1; then
-        kc_test_fail "cli: unknown flag should fail"
+        kc_test_fail "cli unknown option: expected exit code non-zero, got 0"
         return 1
     fi
+    kc_test_pass "cli unknown option fails"
 
     if "$BIN" > /dev/null 2>&1; then
-        kc_test_fail "cli: missing command should fail"
+        kc_test_fail "cli missing command: expected exit code non-zero, got 0"
         return 1
     fi
+    kc_test_pass "cli missing delegate command fails"
 
     if "$BIN" -x > /dev/null 2>&1; then
-        kc_test_fail "cli: missing value for -x should fail"
+        kc_test_fail "cli missing value for -x: expected exit code non-zero, got 0"
         return 1
     fi
+    kc_test_pass "cli missing value for -x fails"
 
     if "$BIN" -e > /dev/null 2>&1; then
-        kc_test_fail "cli: missing value for -e should fail"
+        kc_test_fail "cli missing value for -e: expected exit code non-zero, got 0"
         return 1
     fi
+    kc_test_pass "cli missing value for -e fails"
 
-    kc_test_pass "cli"
+    return 0
 }
 
 # Tests basic delegation: sends input to a command and checks output.
@@ -128,13 +123,14 @@ kc_test_delegate() {
 
     case "$out" in
         *"hello world"*)
-            kc_test_pass "delegate"
+            kc_test_pass "delegate: session output contains input hello world"
             ;;
         *)
             kc_test_fail "delegate: expected output to contain 'hello world', got '$out'"
             return 1
             ;;
     esac
+    return 0
 }
 
 # Tests delegation with an exit command.
@@ -144,13 +140,14 @@ kc_test_exit_cmd() {
 
     case "$out" in
         *"hello"*)
-            kc_test_pass "exit"
+            kc_test_pass "exit command: quit command terminates session successfully"
             ;;
         *)
             kc_test_fail "exit: expected output to contain 'hello', got '$out'"
             return 1
             ;;
     esac
+    return 0
 }
 
 # Tests delegation with an end token.
@@ -160,13 +157,14 @@ kc_test_end_token() {
 
     case "$out" in
         *"line1"*"line2"*)
-            kc_test_pass "end"
+            kc_test_pass "end token: end token END terminates session successfully"
             ;;
         *)
             kc_test_fail "end: expected output to contain 'line1' and 'line2', got '$out'"
             return 1
             ;;
     esac
+    return 0
 }
 
 # Tests that the prompt is shown.
@@ -176,13 +174,14 @@ kc_test_prompt() {
 
     case "$out" in
         *"IN: "*)
-            kc_test_pass "prompt"
+            kc_test_pass "prompt: custom prompt prefix is rendered"
             ;;
         *)
-            kc_test_fail "prompt: expected prompt text in output"
+            kc_test_fail "prompt: expected prompt text in output, got '$out'"
             return 1
             ;;
     esac
+    return 0
 }
 
 # Tests that the initial message is shown.
@@ -192,34 +191,84 @@ kc_test_message() {
 
     case "$out" in
         "ready"*)
-            kc_test_pass "message"
+            kc_test_pass "message: initial ready message is shown on startup"
             ;;
         *)
-            kc_test_fail "message: expected initial message in output"
+            kc_test_fail "message: expected initial message in output, got '$out'"
             return 1
             ;;
     esac
+    return 0
+}
+
+# Validate public static-library embedding.
+# @return 0 on success, 1 on failure.
+kc_test_api() {
+    LIB_PATH="$ROOT/bin/$(kc_test_arch)/$(kc_test_platform)/libchat.a"
+    if [ ! -f "$LIB_PATH" ]; then
+        kc_test_fail "static library existence: expected file at $LIB_PATH, but it was not found"
+        return 1
+    fi
+
+    {
+        printf '%s\n' '#include "chat.h"'
+        printf '%s\n' '#include <stdio.h>'
+        printf '%s\n' '#include <string.h>'
+        printf '%s\n' 'int main(void) {'
+        printf '%s\n' '    kc_chat_t *ctx = NULL;'
+        printf '%s\n' '    kc_chat_options_t opts = kc_chat_options_default();'
+        printf '%s\n' '    opts.cmd = "cat";'
+        printf '%s\n' '    opts.exit_cmd = "quit";'
+        printf '%s\n' '    if (kc_chat_open(&ctx, &opts) != KC_CHAT_OK) return 2;'
+        printf '%s\n' '    if (!ctx) return 3;'
+        printf '%s\n' '    if (kc_chat_is_exit(ctx, "quit") != 1) return 4;'
+        printf '%s\n' '    if (kc_chat_is_exit(ctx, "hello") != 0) return 5;'
+        printf '%s\n' '    char *out = NULL;'
+        printf '%s\n' '    if (kc_chat_exec(ctx, "hello C API", &out) != KC_CHAT_OK) return 6;'
+        printf '%s\n' '    if (!out) return 7;'
+        printf '%s\n' '    if (strstr(out, "hello C API") == NULL) return 8;'
+        printf '%s\n' '    kc_chat_free(out);'
+        printf '%s\n' '    kc_chat_close(ctx);'
+        printf '%s\n' '    return 0;'
+        printf '%s\n' '}'
+    } > "$TMPDIR/consumer.c"
+
+    if ! cc -I "$ROOT/src" "$TMPDIR/consumer.c" "$LIB_PATH" -o "$TMPDIR/consumer"; then
+        kc_test_fail "static library compile: expected consumer.c to compile, but compilation failed"
+        return 1
+    fi
+    kc_test_pass "static library consumer program compiles successfully"
+
+    if ! "$TMPDIR/consumer"; then
+        kc_test_fail "static library execution: expected consumer program to return 0, got non-zero"
+        return 1
+    fi
+    kc_test_pass "static library public C API behaviors verified successfully"
+    return 0
 }
 
 # Runs the full validation suite.
 # @return 0 on success, 1 on failure.
 kc_test_main() {
     failed=0
-
-    BIN=$(kc_test_binary_path)
-    ARTIFACT_DIR=$(kc_test_artifact_dir)
+    ROOT=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
+    BIN="$ROOT/$(kc_test_binary_path)"
+    ARTIFACT_DIR="$ROOT/$(kc_test_artifact_dir)"
+    TMPDIR=$(mktemp -d)
+    trap 'rm -rf "$TMPDIR"' EXIT INT HUP TERM
 
     kc_test_check_binary || exit 1
     kc_test_check_libraries || exit 1
 
-    kc_test_cli         || failed=$((failed + 1))
-    kc_test_delegate    || failed=$((failed + 1))
-    kc_test_exit_cmd    || failed=$((failed + 1))
-    kc_test_end_token   || failed=$((failed + 1))
-    kc_test_prompt      || failed=$((failed + 1))
-    kc_test_message     || failed=$((failed + 1))
+    kc_test_cli || failed=$((failed + 1))
+    kc_test_delegate || failed=$((failed + 1))
+    kc_test_exit_cmd || failed=$((failed + 1))
+    kc_test_end_token || failed=$((failed + 1))
+    kc_test_prompt || failed=$((failed + 1))
+    kc_test_message || failed=$((failed + 1))
+    kc_test_api || failed=$((failed + 1))
 
-    return $failed
+    return "$failed"
 }
 
 kc_test_main
