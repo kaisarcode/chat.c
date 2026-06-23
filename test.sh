@@ -60,7 +60,6 @@ kc_test_check_binary() {
         kc_test_fail "binary existence: expected executable file at $BIN, but it was not found"
         return 1
     fi
-    kc_test_pass "required binary is present"
     return 0
 }
 
@@ -82,7 +81,6 @@ kc_test_check_libraries() {
         return 1
     fi
 
-    kc_test_pass "required static and shared libraries are present"
     return 0
 }
 
