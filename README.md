@@ -86,25 +86,9 @@ Compiled artifacts are generated under `bin/{arch}/{platform}/` for the host arc
 make clean && make
 ```
 
-The host build emits:
-
-```text
-bin/{arch}/{platform}/chat
-bin/{arch}/{platform}/libchat.a
-bin/{arch}/{platform}/libchat.so
-```
-
-Windows builds emit:
-
-```text
-bin/{arch}/windows/chat.exe
-bin/{arch}/windows/libchat.dll
-bin/{arch}/windows/libchat.dll.a
-```
-
 ### Multiarch Builds
 
-The project is prepared to build artifacts for multiple architectures under `bin/{arch}/{platform}/`. A plain `make` builds only the current host architecture, while the targets below build the full matrix or a specific target.
+The project is prepared to build artifacts for multiple architectures under `bin/{arch}/{platform}/`. A plain `make` builds only the current host architecture.
 
 ```bash
 make all
@@ -140,4 +124,4 @@ If you'd like to reach out, you can send an email to kaisar@kaisarcode.com. Plea
 
 [![GPLv3](https://www.gnu.org/graphics/gplv3-127x51.png)](https://www.gnu.org/licenses/gpl-3.0.html)
 
-This project is distributed under the **GNU General Public License version 3 (GPLv3)**. 
+This project is distributed under the **GNU General Public License version 3 (GPLv3)**.
