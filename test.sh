@@ -245,6 +245,58 @@ kc_test_api() {
     return 0
 }
 
+# Validates two contexts can coexist and stopping one doesn't affect the other.
+# @return 0 on success, 1 on failure.
+kc_test_multictx_stop() {
+    LIB_PATH="$ROOT/bin/$(kc_test_arch)/$(kc_test_platform)/libchat.a"
+
+    {
+        printf '%s\n' '#include "chat.h"'
+        printf '%s\n' '#include <stdio.h>'
+        printf '%s\n' '#include <string.h>'
+        printf '%s\n' 'int main(void) {'
+        printf '%s\n' '    kc_chat_t *first = NULL;'
+        printf '%s\n' '    kc_chat_t *second = NULL;'
+        printf '%s\n' '    kc_chat_options_t opts = kc_chat_options_default();'
+        printf '%s\n' '    opts.cmd = "cat";'
+        printf '%s\n' '    opts.exit_cmd = "quit";'
+        printf '%s\n' '    if (kc_chat_open(&first, &opts) != KC_CHAT_OK) { printf("first_open_failed\\n"); return 1; }'
+        printf '%s\n' '    if (kc_chat_open(&second, &opts) != KC_CHAT_OK) { printf("second_open_failed\\n"); kc_chat_close(first); return 1; }'
+        printf '%s\n' '    char *out = NULL;'
+        printf '%s\n' '    if (kc_chat_exec(first, "hello first", &out) != KC_CHAT_OK) { printf("first_exec_failed\\n"); kc_chat_close(first); kc_chat_close(second); return 1; }'
+        printf '%s\n' '    kc_chat_free(out); out = NULL;'
+        printf '%s\n' '    if (kc_chat_stop(first) != KC_CHAT_OK) { printf("first_stop_failed\\n"); kc_chat_close(first); kc_chat_close(second); return 1; }'
+        printf '%s\n' '    if (kc_chat_exec(second, "hello second", &out) != KC_CHAT_OK) { printf("second_exec_after_stop_failed\\n"); kc_chat_close(first); kc_chat_close(second); return 1; }'
+        printf '%s\n' '    if (strstr(out, "hello second") == NULL) { printf("second_output_mismatch\\n"); kc_chat_free(out); kc_chat_close(first); kc_chat_close(second); return 1; }'
+        printf '%s\n' '    kc_chat_free(out);'
+        printf '%s\n' '    if (kc_chat_stop(second) != KC_CHAT_OK) { printf("second_stop_failed\\n"); kc_chat_close(first); kc_chat_close(second); return 1; }'
+        printf '%s\n' '    if (kc_chat_stop(NULL) != KC_CHAT_ERROR) { printf("stop_null_guard_failed\\n"); kc_chat_close(first); kc_chat_close(second); return 1; }'
+        printf '%s\n' '    kc_chat_close(first);'
+        printf '%s\n' '    kc_chat_close(second);'
+        printf '%s\n' '    printf("passed=yes\\n");'
+        printf '%s\n' '    return 0;'
+        printf '%s\n' '}'
+    } > "$TMPDIR/multictx-stop.c"
+
+    if ! cc -I "$ROOT/src" "$TMPDIR/multictx-stop.c" "$LIB_PATH" -o "$TMPDIR/multictx-stop"; then
+        kc_test_fail "multi-context stop: compile probe"
+        return 1
+    fi
+
+    out=$("$TMPDIR/multictx-stop" 2>&1)
+
+    case "$out" in
+        *"passed=yes"*)
+            kc_test_pass "multi-context stop with two contexts"
+            return 0
+            ;;
+        *)
+            kc_test_fail "multi-context stop: $out"
+            return 1
+            ;;
+    esac
+}
+
 # Runs the full validation suite.
 # @return 0 on success, 1 on failure.
 kc_test_main() {
@@ -265,6 +317,7 @@ kc_test_main() {
     kc_test_prompt || failed=$((failed + 1))
     kc_test_message || failed=$((failed + 1))
     kc_test_api || failed=$((failed + 1))
+    kc_test_multictx_stop || failed=$((failed + 1))
 
     return "$failed"
 }

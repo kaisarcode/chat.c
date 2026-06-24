@@ -155,6 +155,13 @@ int kc_chat_listen_signal(kc_chat_t *ctx, int sig_id);
 void kc_chat_signal_listener(int sig);
 
 /**
+ * Request stop for a specific chat context.
+ * @param ctx Chat context.
+ * @return KC_CHAT_OK on success, KC_CHAT_ERROR on failure.
+ */
+int kc_chat_stop(kc_chat_t *ctx);
+
+/**
  * Returns the build version generated at compile time.
  * @return Unix timestamp for the current build.
  */

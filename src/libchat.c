@@ -70,13 +70,16 @@ typedef struct {
     kc_chat_signal_callback_t cb;
 } kc_chat_signal_entry_t;
 
-static kc_chat_t *g_signal_ctx = NULL;
+static kc_chat_t **g_signal_ctx_list = NULL;
+static int g_signal_ctx_cap = 0;
+static int g_signal_ctx_count = 0;
 
 struct kc_chat {
     kc_chat_options_t opts;
     kc_chat_signal_entry_t *signal_handlers;
     int n_signal_handlers;
     int signal_handlers_capacity;
+    volatile sig_atomic_t stop_requested;
 };
 
 /**
@@ -114,8 +117,18 @@ int kc_chat_open(kc_chat_t **out, const kc_chat_options_t *opts) {
  * @return None.
  */
 void kc_chat_close(kc_chat_t *ctx) {
+    int i;
+
     if (!ctx) {
         return;
+    }
+
+    for (i = 0; i < g_signal_ctx_count; i++) {
+        if (g_signal_ctx_list[i] == ctx) {
+            g_signal_ctx_list[i] =
+                g_signal_ctx_list[--g_signal_ctx_count];
+            break;
+        }
     }
 
     kc_chat_options_free(&ctx->opts);
@@ -380,6 +393,17 @@ void kc_chat_options_load_env(kc_chat_options_t *opts) {
 }
 
 /**
+ * Request stop for a specific chat context.
+ * @param ctx Chat context.
+ * @return KC_CHAT_OK on success, KC_CHAT_ERROR on failure.
+ */
+int kc_chat_stop(kc_chat_t *ctx) {
+    if (!ctx) return KC_CHAT_ERROR;
+    ctx->stop_requested = 1;
+    return KC_CHAT_OK;
+}
+
+/**
  * Free dynamically allocated resources within an options struct.
  * @param opts Options to clean up.
  * @return None.
@@ -489,7 +513,15 @@ int kc_chat_listen_signals(kc_chat_t *ctx) {
         return KC_CHAT_ERROR;
     }
 
-    g_signal_ctx = ctx;
+    if (g_signal_ctx_count >= g_signal_ctx_cap) {
+        int new_cap = g_signal_ctx_cap ? g_signal_ctx_cap * 2 : 4;
+        kc_chat_t **new_list = (kc_chat_t **)realloc(g_signal_ctx_list,
+            (size_t)new_cap * sizeof(kc_chat_t *));
+        if (!new_list) return KC_CHAT_ERROR;
+        g_signal_ctx_list = new_list;
+        g_signal_ctx_cap = new_cap;
+    }
+    g_signal_ctx_list[g_signal_ctx_count++] = ctx;
     return KC_CHAT_OK;
 }
 
@@ -504,7 +536,15 @@ int kc_chat_listen_signal(kc_chat_t *ctx, int sig_id) {
         return KC_CHAT_ERROR;
     }
 
-    g_signal_ctx = ctx;
+    if (g_signal_ctx_count >= g_signal_ctx_cap) {
+        int new_cap = g_signal_ctx_cap ? g_signal_ctx_cap * 2 : 4;
+        kc_chat_t **new_list = (kc_chat_t **)realloc(g_signal_ctx_list,
+            (size_t)new_cap * sizeof(kc_chat_t *));
+        if (!new_list) return KC_CHAT_ERROR;
+        g_signal_ctx_list = new_list;
+        g_signal_ctx_cap = new_cap;
+    }
+    g_signal_ctx_list[g_signal_ctx_count++] = ctx;
 
 #ifdef _WIN32
     (void)sig_id;
@@ -521,8 +561,12 @@ int kc_chat_listen_signal(kc_chat_t *ctx, int sig_id) {
  * @return None.
  */
 void kc_chat_signal_listener(int sig) {
-    if (g_signal_ctx && kc_chat_raise_signal(g_signal_ctx, sig) == 0)
-        return;
+    int i;
+    for (i = 0; i < g_signal_ctx_count; i++) {
+        if (g_signal_ctx_list[i] &&
+            kc_chat_raise_signal(g_signal_ctx_list[i], sig) == 0)
+            return;
+    }
     signal(sig, SIG_DFL);
     raise(sig);
 }
