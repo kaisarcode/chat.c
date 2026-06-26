@@ -53,27 +53,39 @@ Custom prompt and initial message:
 ```c
 #include "chat.h"
 
-kc_chat_t *ctx = kc_chat_open();
+kc_chat_options_t opts = kc_chat_options_default();
+kc_chat_t *ctx = NULL;
 char *output = NULL;
 
-kc_chat_set_cmd(ctx, "cat");
+opts.cmd = strdup("cat");
+opts.exit_cmd = strdup("quit");
+kc_chat_open(&ctx, &opts);
 kc_chat_exec(ctx, "hello world", &output);
 
 printf("%s\n", output);  /* prints: hello world */
 kc_chat_free(output);
 kc_chat_close(ctx);
+kc_chat_options_free(&opts);
 ```
 
 ---
 
 ## Lifecycle
 
-- `kc_chat_open()` - allocates and returns a new context owned by the caller.
-- `kc_chat_set_cmd()` - configures the shell command for delegation.
-- `kc_chat_set_exit()` - configures the exit command string.
+- `kc_chat_options_default()` - creates a zero-initialized options struct.
+- `kc_chat_options_load_env()` - overlays options from `KC_CHAT_*` environment variables.
+- `kc_chat_open()` - allocates a new context and deep-copies caller options.
 - `kc_chat_exec()` - pipes input to the configured command and captures output.
 - `kc_chat_is_exit()` - checks whether input matches the exit command.
 - `kc_chat_free()` - releases output strings allocated by the library.
+- `kc_chat_stop()` - requests stop for a context.
+- `kc_chat_on_signal()` - registers or removes application-defined signal handlers.
+- `kc_chat_raise_signal()` - raises an application-defined signal on a context.
+- `kc_chat_listen_signals()` - registers a context with the global signal listener.
+- `kc_chat_listen_signal()` - wires an OS signal to the global listener.
+- `kc_chat_signal_listener()` - dispatches a signal to registered contexts.
+- `kc_chat_version()` - returns the build version.
+- `kc_chat_options_free()` - releases owned option strings.
 - `kc_chat_close()` - releases the context.
 
 ---

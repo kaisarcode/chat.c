@@ -93,13 +93,12 @@ if(CHAT_BUILD_TESTS)
             $<TARGET_FILE_DIR:chat_contract_test>
     )
 
-    add_test(NAME library-version COMMAND chat_contract_test version)
     add_test(NAME library-options COMMAND chat_contract_test options)
-    add_test(NAME library-lifecycle COMMAND chat_contract_test lifecycle)
-    add_test(NAME library-is-exit COMMAND chat_contract_test is-exit)
-    add_test(NAME library-signals COMMAND chat_contract_test signals)
+    add_test(NAME library-context COMMAND chat_contract_test context)
+    add_test(NAME library-exit COMMAND chat_contract_test exit)
+    add_test(NAME library-exec COMMAND chat_contract_test exec)
+    add_test(NAME library-signal COMMAND chat_contract_test signal)
     if(NOT WIN32)
-        add_test(NAME library-exec COMMAND chat_contract_test exec)
         add_test(NAME library-multictx-stop COMMAND chat_contract_test multictx-stop)
     endif()
 
