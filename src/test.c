@@ -702,23 +702,23 @@ static int case_signal_contract(void) {
 
 /**
  * Verifies context-owned stop state isolation across two contexts.
- * POSIX only: uses kc_chat_exec to confirm the second context still runs.
- * @return 0 on success, 1 on failure. Skipped on Windows.
+ * @return 0 on success, 1 on failure.
  */
 static int case_multictx_stop(void) {
-#ifdef _WIN32
-    return 0;
-#else
     kc_chat_options_t opts;
     kc_chat_t *first;
     kc_chat_t *second;
+#ifndef _WIN32
     char *out;
+#endif
     int rc;
 
     opts = kc_chat_options_default();
     first = NULL;
     second = NULL;
+#ifndef _WIN32
     out = NULL;
+#endif
     rc = 0;
     opts.cmd = copy_string("cat");
     if (opts.cmd == NULL) {
@@ -728,11 +728,16 @@ static int case_multictx_stop(void) {
     rc += expect_int("open first", KC_CHAT_OK, kc_chat_open(&first, &opts));
     rc += expect_int("open second", KC_CHAT_OK, kc_chat_open(&second, &opts));
     rc += expect_int("stop first", KC_CHAT_OK, kc_chat_stop(first));
+#ifndef _WIN32
     rc += expect_int("exec second after first stopped", KC_CHAT_OK,
         kc_chat_exec(second, "hello second", &out));
     rc += expect_contains("second output after stop", out, "hello second");
     kc_chat_free(out);
     out = NULL;
+#else
+    rc += expect_int("exec second after first stopped returns Windows error",
+        KC_CHAT_ERROR, kc_chat_exec(second, "hello second", NULL));
+#endif
     rc += expect_int("stop second", KC_CHAT_OK, kc_chat_stop(second));
     rc += expect_int("stop first again", KC_CHAT_OK, kc_chat_stop(first));
     rc += expect_int("stop(NULL)", KC_CHAT_ERROR, kc_chat_stop(NULL));
@@ -740,7 +745,6 @@ static int case_multictx_stop(void) {
     kc_chat_close(second);
     kc_chat_options_free(&opts);
     return rc == 0 ? 0 : 1;
-#endif
 }
 
 /**
