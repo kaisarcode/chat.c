@@ -8,6 +8,12 @@ if(NOT DEFINED CHAT_BUILD_VERSION)
 endif()
 
 option(CHAT_NATIVE "Enable native hardware optimizations" OFF)
+option(CHAT_BUILD_TESTS "Build chat tests" OFF)
+
+set(CHAT_TEST_EXTERNAL_ARTIFACTS OFF)
+if(CHAT_BUILD_TESTS AND CHAT_TEST_SHARED_LIBRARY)
+    set(CHAT_TEST_EXTERNAL_ARTIFACTS ON)
+endif()
 
 if(NOT MSVC)
     add_compile_options(-O3 -Wall -Wextra -Werror)
@@ -23,32 +29,94 @@ set_source_files_properties(src/libchat.c PROPERTIES
     COMPILE_DEFINITIONS KC_CHAT_BUILD_VERSION=${CHAT_BUILD_VERSION}
 )
 
-# Main executable
-add_executable(chat
-    src/chat.c
-    src/libchat.c
-)
+if(NOT CHAT_TEST_EXTERNAL_ARTIFACTS)
+    # Main executable
+    add_executable(chat
+        src/chat.c
+        src/libchat.c
+    )
 
-target_include_directories(chat PRIVATE src)
+    target_include_directories(chat PRIVATE src)
 
-if(UNIX AND NOT ANDROID)
-    target_link_libraries(chat pthread m)
+    if(UNIX AND NOT ANDROID)
+        target_link_libraries(chat pthread m)
+    endif()
+
+    # Static library
+    add_library(chat_static STATIC src/libchat.c)
+
+    set_target_properties(chat_static PROPERTIES OUTPUT_NAME "chat")
+
+    target_include_directories(chat_static PRIVATE src)
+
+    # Shared library
+    add_library(chat_shared SHARED src/libchat.c)
+
+    set_target_properties(chat_shared PROPERTIES OUTPUT_NAME "chat")
+    set_target_properties(chat_shared PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
+    target_include_directories(chat_shared PRIVATE src)
+
+    if(UNIX AND NOT ANDROID)
+        target_link_libraries(chat_shared pthread m)
+    endif()
 endif()
 
-# Static library
-add_library(chat_static STATIC src/libchat.c)
+if(CHAT_BUILD_TESTS)
+    enable_testing()
 
-set_target_properties(chat_static PROPERTIES OUTPUT_NAME "chat")
+    if(CHAT_TEST_SHARED_LIBRARY)
+        add_library(chat_test_shared SHARED IMPORTED)
+        set_target_properties(chat_test_shared PROPERTIES
+            IMPORTED_LOCATION "${CHAT_TEST_SHARED_LIBRARY}"
+        )
+        if(CHAT_TEST_IMPORT_LIBRARY)
+            set_target_properties(chat_test_shared PROPERTIES
+                IMPORTED_IMPLIB "${CHAT_TEST_IMPORT_LIBRARY}"
+            )
+        endif()
+    else()
+        set(CHAT_TEST_SHARED_TARGET chat_shared)
+    endif()
 
-target_include_directories(chat_static PRIVATE src)
+    if(TARGET chat_test_shared)
+        set(CHAT_TEST_SHARED_TARGET chat_test_shared)
+    endif()
 
-# Shared library
-add_library(chat_shared SHARED src/libchat.c)
+    add_executable(chat_contract_test src/test.c)
+    target_include_directories(chat_contract_test PRIVATE src)
+    target_link_libraries(chat_contract_test PRIVATE ${CHAT_TEST_SHARED_TARGET})
 
-set_target_properties(chat_shared PROPERTIES OUTPUT_NAME "chat")
+    add_custom_command(TARGET chat_contract_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:${CHAT_TEST_SHARED_TARGET}>
+            $<TARGET_FILE_DIR:chat_contract_test>
+    )
 
-target_include_directories(chat_shared PRIVATE src)
+    add_test(NAME library-version COMMAND chat_contract_test version)
+    add_test(NAME library-options COMMAND chat_contract_test options)
+    add_test(NAME library-lifecycle COMMAND chat_contract_test lifecycle)
+    add_test(NAME library-is-exit COMMAND chat_contract_test is-exit)
+    add_test(NAME library-signals COMMAND chat_contract_test signals)
+    if(NOT WIN32)
+        add_test(NAME library-exec COMMAND chat_contract_test exec)
+        add_test(NAME library-multictx-stop COMMAND chat_contract_test multictx-stop)
+    endif()
 
-if(UNIX AND NOT ANDROID)
-    target_link_libraries(chat_shared pthread m)
+    if(CHAT_TEST_CLI)
+        add_executable(chat_test_cli IMPORTED)
+        set_target_properties(chat_test_cli PROPERTIES
+            IMPORTED_LOCATION "${CHAT_TEST_CLI}"
+        )
+        set(CHAT_TEST_CLI_COMMAND chat_test_cli)
+    else()
+        set(CHAT_TEST_CLI_COMMAND chat)
+    endif()
+
+    add_test(NAME cli-help COMMAND ${CHAT_TEST_CLI_COMMAND} --help)
+    add_test(NAME cli-version COMMAND ${CHAT_TEST_CLI_COMMAND} --version)
+    add_test(NAME cli-unknown COMMAND ${CHAT_TEST_CLI_COMMAND} --unknown)
+    set_tests_properties(cli-unknown PROPERTIES WILL_FAIL TRUE)
+    add_test(NAME cli-missing-command COMMAND ${CHAT_TEST_CLI_COMMAND})
+    set_tests_properties(cli-missing-command PROPERTIES WILL_FAIL TRUE)
 endif()
