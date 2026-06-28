@@ -17,6 +17,9 @@ endif()
 
 if(NOT MSVC)
     add_compile_options(-O3 -Wall -Wextra -Werror)
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        add_compile_options(-Wno-unused-command-line-argument)
+    endif()
     if(CHAT_NATIVE)
         add_compile_options(-march=native)
     endif()
@@ -38,7 +41,7 @@ if(NOT CHAT_TEST_EXTERNAL_ARTIFACTS)
 
     target_include_directories(chat PRIVATE src)
 
-    if(UNIX AND NOT ANDROID)
+    if(UNIX AND NOT ANDROID AND NOT APPLE)
         target_link_libraries(chat pthread m)
     endif()
 
@@ -57,7 +60,7 @@ if(NOT CHAT_TEST_EXTERNAL_ARTIFACTS)
 
     target_include_directories(chat_shared PRIVATE src)
 
-    if(UNIX AND NOT ANDROID)
+    if(UNIX AND NOT ANDROID AND NOT APPLE)
         target_link_libraries(chat_shared pthread m)
     endif()
 endif()
