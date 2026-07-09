@@ -12,7 +12,7 @@
 #define _XOPEN_SOURCE 700
 #endif
 
-#include "chat.h"
+#include "libchat.h"
 
 #include <stdio.h>
 #include <stdlib.h>

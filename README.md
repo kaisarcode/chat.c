@@ -1,4 +1,4 @@
-# chat.c - Chat Loop Delegator
+# chat.c - Chat Loop Delegator TEST
 
 `chat.c` provides an interactive chat loop that repeatedly reads input from stdin, delegates it to a shell command via pipe, and displays the command's output. Works as a small C library and CLI tool.
 
@@ -51,7 +51,7 @@ Custom prompt and initial message:
 ## Public API
 
 ```c
-#include "chat.h"
+#include "libchat.h"
 
 kc_chat_options_t opts = kc_chat_options_default();
 kc_chat_t *ctx = NULL;
