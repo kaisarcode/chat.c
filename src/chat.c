@@ -323,12 +323,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    kc_chat_listen_signals(ctx);
-#ifndef _WIN32
-    kc_chat_listen_signal(ctx, 2);
-    kc_chat_listen_signal(ctx, 15);
-#endif
-
     if (opts.msg && *opts.msg) {
         printf("%s\n", opts.msg);
     }

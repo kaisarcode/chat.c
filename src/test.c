@@ -13,14 +13,9 @@
 
 #include "libchat.h"
 
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-static int signal_count;
-static int signal_count_b;
-static kc_chat_t *signal_ctx_seen;
 
 /**
  * Sets or clears a process environment variable.
@@ -117,26 +112,6 @@ static int expect_contains(const char *name, const char *haystack, const char *n
 #endif
 
 /**
- * Stores one observed signal callback.
- * @param ctx Context passed by the library.
- * @return None.
- */
-static void count_signal(kc_chat_t *ctx) {
-    signal_count++;
-    signal_ctx_seen = ctx;
-}
-
-/**
- * Stores one observed secondary signal callback.
- * @param ctx Context passed by the library.
- * @return None.
- */
-static void count_signal_b(kc_chat_t *ctx) {
-    signal_count_b++;
-    signal_ctx_seen = ctx;
-}
-
-/**
  * Creates a basic options struct with a command.
  * @return Prepared options struct.
  */
@@ -206,7 +181,6 @@ static int case_kc_chat_close(void) {
     rc = 0;
     if (opts.cmd == NULL) return 1;
     rc += expect_int("open before close", KC_CHAT_OK, kc_chat_open(&ctx, &opts));
-    rc += expect_int("listen signals before close", KC_CHAT_OK, kc_chat_listen_signals(ctx));
     kc_chat_close(NULL);
     kc_chat_close(ctx);
     kc_chat_options_free(&opts);
@@ -422,150 +396,6 @@ static int case_kc_chat_options_free(void) {
 }
 
 /**
- * Tests kc_chat_on_signal.
- * @return 0 on success, 1 on failure.
- */
-static int case_kc_chat_on_signal(void) {
-    kc_chat_options_t opts;
-    kc_chat_t *ctx;
-    int rc;
-
-    opts = make_cat_options();
-    ctx = NULL;
-    rc = 0;
-    if (opts.cmd == NULL) return 1;
-    rc += expect_int("on_signal NULL ctx", KC_CHAT_ERROR,
-        kc_chat_on_signal(NULL, 10, count_signal));
-    rc += expect_int("open for on_signal", KC_CHAT_OK, kc_chat_open(&ctx, &opts));
-    rc += expect_int("register first handler", KC_CHAT_OK,
-        kc_chat_on_signal(ctx, 10, count_signal));
-    rc += expect_int("replace existing handler", KC_CHAT_OK,
-        kc_chat_on_signal(ctx, 10, count_signal_b));
-    signal_count = 0;
-    signal_count_b = 0;
-    rc += expect_int("raise replaced handler", KC_CHAT_OK,
-        kc_chat_raise_signal(ctx, 10));
-    rc += expect_int("old handler not called", 0, signal_count);
-    rc += expect_int("new handler called", 1, signal_count_b);
-    rc += expect_int("remove handler", KC_CHAT_OK, kc_chat_on_signal(ctx, 10, NULL));
-    rc += expect_int("remove missing handler is OK", KC_CHAT_OK,
-        kc_chat_on_signal(ctx, 10, NULL));
-    kc_chat_close(ctx);
-    kc_chat_options_free(&opts);
-    return rc == 0 ? 0 : 1;
-}
-
-/**
- * Tests kc_chat_raise_signal.
- * @return 0 on success, 1 on failure.
- */
-static int case_kc_chat_raise_signal(void) {
-    kc_chat_options_t opts;
-    kc_chat_t *ctx;
-    int rc;
-
-    opts = make_cat_options();
-    ctx = NULL;
-    rc = 0;
-    signal_count = 0;
-    signal_ctx_seen = NULL;
-    if (opts.cmd == NULL) return 1;
-    rc += expect_int("raise NULL ctx", KC_CHAT_ERROR,
-        kc_chat_raise_signal(NULL, 10));
-    rc += expect_int("open for raise_signal", KC_CHAT_OK, kc_chat_open(&ctx, &opts));
-    rc += expect_int("raise unhandled signal", KC_CHAT_ERROR,
-        kc_chat_raise_signal(ctx, 10));
-    rc += expect_int("register signal", KC_CHAT_OK,
-        kc_chat_on_signal(ctx, 10, count_signal));
-    rc += expect_int("raise handled signal", KC_CHAT_OK,
-        kc_chat_raise_signal(ctx, 10));
-    rc += expect_int("signal callback count", 1, signal_count);
-    rc += expect_true("signal callback saw context", signal_ctx_seen == ctx);
-    kc_chat_close(ctx);
-    kc_chat_options_free(&opts);
-    return rc == 0 ? 0 : 1;
-}
-
-/**
- * Tests kc_chat_listen_signals.
- * @return 0 on success, 1 on failure.
- */
-static int case_kc_chat_listen_signals(void) {
-    kc_chat_options_t opts;
-    kc_chat_t *ctx;
-    int rc;
-
-    opts = make_cat_options();
-    ctx = NULL;
-    rc = 0;
-    if (opts.cmd == NULL) return 1;
-    rc += expect_int("listen_signals NULL ctx", KC_CHAT_ERROR,
-        kc_chat_listen_signals(NULL));
-    rc += expect_int("open for listen_signals", KC_CHAT_OK, kc_chat_open(&ctx, &opts));
-    rc += expect_int("listen_signals context", KC_CHAT_OK,
-        kc_chat_listen_signals(ctx));
-    kc_chat_close(ctx);
-    kc_chat_options_free(&opts);
-    return rc == 0 ? 0 : 1;
-}
-
-/**
- * Tests kc_chat_listen_signal.
- * @return 0 on success, 1 on failure.
- */
-static int case_kc_chat_listen_signal(void) {
-    kc_chat_options_t opts;
-    kc_chat_t *ctx;
-    int rc;
-
-    opts = make_cat_options();
-    ctx = NULL;
-    rc = 0;
-    if (opts.cmd == NULL) return 1;
-    rc += expect_int("listen_signal NULL ctx", KC_CHAT_ERROR,
-        kc_chat_listen_signal(NULL, SIGINT));
-    rc += expect_int("open for listen_signal", KC_CHAT_OK, kc_chat_open(&ctx, &opts));
-    rc += expect_int("listen one signal", KC_CHAT_OK,
-        kc_chat_listen_signal(ctx, SIGINT));
-    kc_chat_close(ctx);
-    kc_chat_options_free(&opts);
-    return rc == 0 ? 0 : 1;
-}
-
-/**
- * Tests kc_chat_signal_listener.
- * @return 0 on success, 1 on failure.
- */
-static int case_kc_chat_signal_listener(void) {
-    kc_chat_options_t opts;
-    kc_chat_t *first;
-    kc_chat_t *second;
-    int rc;
-
-    opts = make_cat_options();
-    first = NULL;
-    second = NULL;
-    rc = 0;
-    signal_count = 0;
-    signal_count_b = 0;
-    signal_ctx_seen = NULL;
-    if (opts.cmd == NULL) return 1;
-    rc += expect_int("open first context", KC_CHAT_OK, kc_chat_open(&first, &opts));
-    rc += expect_int("open second context", KC_CHAT_OK, kc_chat_open(&second, &opts));
-    rc += expect_int("first listens globally", KC_CHAT_OK, kc_chat_listen_signals(first));
-    rc += expect_int("second listens globally", KC_CHAT_OK, kc_chat_listen_signals(second));
-    rc += expect_int("second handler registered", KC_CHAT_OK,
-        kc_chat_on_signal(second, 77, count_signal_b));
-    kc_chat_signal_listener(77);
-    rc += expect_int("listener calls second handler", 1, signal_count_b);
-    rc += expect_true("listener routed second context", signal_ctx_seen == second);
-    kc_chat_close(first);
-    kc_chat_close(second);
-    kc_chat_options_free(&opts);
-    return rc == 0 ? 0 : 1;
-}
-
-/**
  * Tests kc_chat_stop.
  * @return 0 on success, 1 on failure.
  */
@@ -636,17 +466,6 @@ int main(int argc, char **argv) {
     }
     if (strcmp(argv[1], "kc_chat_options_free") == 0) {
         return case_kc_chat_options_free();
-    }
-    if (strcmp(argv[1], "kc_chat_on_signal") == 0) return case_kc_chat_on_signal();
-    if (strcmp(argv[1], "kc_chat_raise_signal") == 0) return case_kc_chat_raise_signal();
-    if (strcmp(argv[1], "kc_chat_listen_signals") == 0) {
-        return case_kc_chat_listen_signals();
-    }
-    if (strcmp(argv[1], "kc_chat_listen_signal") == 0) {
-        return case_kc_chat_listen_signal();
-    }
-    if (strcmp(argv[1], "kc_chat_signal_listener") == 0) {
-        return case_kc_chat_signal_listener();
     }
     if (strcmp(argv[1], "kc_chat_stop") == 0) return case_kc_chat_stop();
     if (strcmp(argv[1], "kc_chat_version") == 0) return case_kc_chat_version();

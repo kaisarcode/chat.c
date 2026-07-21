@@ -13,7 +13,7 @@ conversation semantics or retain command state.
 
 The CLI owns terminal-facing behavior. The library owns options, context
 lifecycle, exact exit comparison, one POSIX child execution, output allocation,
-and application-level signal callbacks.
+and stop state.
 
 The four source files have fixed responsibilities:
 
@@ -109,13 +109,11 @@ tests.
 
 ## Context and Stop State
 
-Opening deep-copies all option strings. Closing frees those copies, callback
-storage, and global signal registration. Contexts do not own a persistent child
-or conversation history.
+Opening deep-copies all option strings. Closing frees those copies. Contexts do
+not own a persistent child or conversation history.
 
 `kc_chat_stop()` only sets context state. Current execution and CLI paths do not
-read it. Signal callbacks are application-level dispatch and do not terminate an
-active child.
+read it and do not terminate an active child.
 
 ## Composition
 

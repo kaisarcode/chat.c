@@ -42,13 +42,6 @@ typedef struct kc_chat_options {
 } kc_chat_options_t;
 
 /**
- * Callback type for library-level signal handling.
- * Registered via kc_chat_on_signal; invoked by kc_chat_raise_signal.
- * @param ctx Chat context.
- */
-typedef void (*kc_chat_signal_callback_t)(kc_chat_t *ctx);
-
-/**
  * Initialize a new chat context.
  * @param out Pointer to receive the context pointer.
  * @param opts Options.
@@ -109,50 +102,6 @@ void kc_chat_options_load_env(kc_chat_options_t *opts);
  * @return None.
  */
 void kc_chat_options_free(kc_chat_options_t *opts);
-
-/**
- * Register a handler for a library-level signal number.
- *
- * @param ctx Chat context.
- * @param sig Application-defined signal number.
- * @param cb Callback to invoke, or NULL to unregister.
- * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on failure.
- */
-int kc_chat_on_signal(kc_chat_t *ctx, int sig, kc_chat_signal_callback_t cb);
-
-/**
- * Raise a library-level signal.
- *
- * @param ctx Chat context.
- * @param sig Signal number to raise.
- * @return KC_CHAT_OK if a handler was called, or KC_CHAT_ERROR.
- */
-int kc_chat_raise_signal(kc_chat_t *ctx, int sig);
-
-/**
- * Set the internal signal-listener context.
- *
- * @param ctx Chat context.
- * @return KC_CHAT_OK on success, or KC_CHAT_ERROR if ctx is NULL.
- */
-int kc_chat_listen_signals(kc_chat_t *ctx);
-
-/**
- * Wire an OS signal to the library signal listener.
- *
- * @param ctx Chat context.
- * @param sig_id OS signal number (e.g. SIGHUP, SIGINT, SIGTERM).
- * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on failure.
- */
-int kc_chat_listen_signal(kc_chat_t *ctx, int sig_id);
-
-/**
- * Generic signal-listener compatible with signal() / sigaction().
- *
- * @param sig OS signal number.
- * @return None.
- */
-void kc_chat_signal_listener(int sig);
 
 /**
  * Request stop for a specific chat context.

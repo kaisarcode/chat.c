@@ -65,20 +65,8 @@ static const kc_env_map_t env_config_table[] = {
 static const int env_config_table_n =
     sizeof(env_config_table) / sizeof(env_config_table[0]);
 
-typedef struct {
-    int sig;
-    kc_chat_signal_callback_t cb;
-} kc_chat_signal_entry_t;
-
-static kc_chat_t **g_signal_ctx_list = NULL;
-static int g_signal_ctx_cap = 0;
-static int g_signal_ctx_count = 0;
-
 struct kc_chat {
     kc_chat_options_t opts;
-    kc_chat_signal_entry_t *signal_handlers;
-    int n_signal_handlers;
-    int signal_handlers_capacity;
     volatile sig_atomic_t stop_requested;
 };
 
@@ -117,22 +105,11 @@ int kc_chat_open(kc_chat_t **out, const kc_chat_options_t *opts) {
  * @return None.
  */
 void kc_chat_close(kc_chat_t *ctx) {
-    int i;
-
     if (!ctx) {
         return;
     }
 
-    for (i = 0; i < g_signal_ctx_count; i++) {
-        if (g_signal_ctx_list[i] == ctx) {
-            g_signal_ctx_list[i] =
-                g_signal_ctx_list[--g_signal_ctx_count];
-            break;
-        }
-    }
-
     kc_chat_options_free(&ctx->opts);
-    free(ctx->signal_handlers);
     free(ctx);
 }
 
@@ -423,150 +400,4 @@ void kc_chat_options_free(kc_chat_options_t *opts) {
     opts->msg = NULL;
     free(opts->prompt);
     opts->prompt = NULL;
-}
-
-/**
- * Register a handler for a library-level signal number.
- * @param ctx Chat context.
- * @param sig Application-defined signal number.
- * @param cb Callback to invoke.
- * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on failure.
- */
-int kc_chat_on_signal(kc_chat_t *ctx, int sig, kc_chat_signal_callback_t cb) {
-    int i;
-
-    if (!ctx) {
-        return KC_CHAT_ERROR;
-    }
-
-    for (i = 0; i < ctx->n_signal_handlers; i++) {
-        if (ctx->signal_handlers[i].sig == sig) {
-            if (cb) {
-                ctx->signal_handlers[i].cb = cb;
-            } else {
-                int tail = ctx->n_signal_handlers - i - 1;
-                if (tail > 0) {
-                    memmove(&ctx->signal_handlers[i],
-                            &ctx->signal_handlers[i + 1],
-                            (size_t)tail * sizeof(kc_chat_signal_entry_t));
-                }
-                ctx->n_signal_handlers--;
-            }
-            return KC_CHAT_OK;
-        }
-    }
-
-    if (!cb) {
-        return KC_CHAT_OK;
-    }
-
-    if (ctx->n_signal_handlers >= ctx->signal_handlers_capacity) {
-        int new_cap = ctx->signal_handlers_capacity ? ctx->signal_handlers_capacity * 2 : 4;
-        kc_chat_signal_entry_t *p = (kc_chat_signal_entry_t *)realloc(ctx->signal_handlers,
-            (size_t)new_cap * sizeof(kc_chat_signal_entry_t));
-
-        if (!p) {
-            return KC_CHAT_ERROR;
-        }
-
-        ctx->signal_handlers = p;
-        ctx->signal_handlers_capacity = new_cap;
-    }
-
-    ctx->signal_handlers[ctx->n_signal_handlers].sig = sig;
-    ctx->signal_handlers[ctx->n_signal_handlers].cb = cb;
-    ctx->n_signal_handlers++;
-
-    return KC_CHAT_OK;
-}
-
-/**
- * Raise a library-level signal.
- * @param ctx Chat context.
- * @param sig Signal number to raise.
- * @return KC_CHAT_OK if handled, or KC_CHAT_ERROR if no handler.
- */
-int kc_chat_raise_signal(kc_chat_t *ctx, int sig) {
-    int i;
-
-    if (!ctx) {
-        return KC_CHAT_ERROR;
-    }
-
-    for (i = 0; i < ctx->n_signal_handlers; i++) {
-        if (ctx->signal_handlers[i].sig == sig) {
-            ctx->signal_handlers[i].cb(ctx);
-            return KC_CHAT_OK;
-        }
-    }
-
-    return KC_CHAT_ERROR;
-}
-
-/**
- * Set the internal signal-listener context.
- * @param ctx Chat context.
- * @return KC_CHAT_OK on success, or KC_CHAT_ERROR if ctx is NULL.
- */
-int kc_chat_listen_signals(kc_chat_t *ctx) {
-    if (!ctx) {
-        return KC_CHAT_ERROR;
-    }
-
-    if (g_signal_ctx_count >= g_signal_ctx_cap) {
-        int new_cap = g_signal_ctx_cap ? g_signal_ctx_cap * 2 : 4;
-        kc_chat_t **new_list = (kc_chat_t **)realloc(g_signal_ctx_list,
-            (size_t)new_cap * sizeof(kc_chat_t *));
-        if (!new_list) return KC_CHAT_ERROR;
-        g_signal_ctx_list = new_list;
-        g_signal_ctx_cap = new_cap;
-    }
-    g_signal_ctx_list[g_signal_ctx_count++] = ctx;
-    return KC_CHAT_OK;
-}
-
-/**
- * Wire an OS signal to the library signal listener.
- * @param ctx Chat context.
- * @param sig_id OS signal number.
- * @return KC_CHAT_OK on success, or KC_CHAT_ERROR on failure.
- */
-int kc_chat_listen_signal(kc_chat_t *ctx, int sig_id) {
-    if (!ctx) {
-        return KC_CHAT_ERROR;
-    }
-
-    if (g_signal_ctx_count >= g_signal_ctx_cap) {
-        int new_cap = g_signal_ctx_cap ? g_signal_ctx_cap * 2 : 4;
-        kc_chat_t **new_list = (kc_chat_t **)realloc(g_signal_ctx_list,
-            (size_t)new_cap * sizeof(kc_chat_t *));
-        if (!new_list) return KC_CHAT_ERROR;
-        g_signal_ctx_list = new_list;
-        g_signal_ctx_cap = new_cap;
-    }
-    g_signal_ctx_list[g_signal_ctx_count++] = ctx;
-
-#ifdef _WIN32
-    (void)sig_id;
-#else
-    signal(sig_id, kc_chat_signal_listener);
-#endif
-
-    return KC_CHAT_OK;
-}
-
-/**
- * Generic signal-listener compatible with signal() / sigaction().
- * @param sig OS signal number.
- * @return None.
- */
-void kc_chat_signal_listener(int sig) {
-    int i;
-    for (i = 0; i < g_signal_ctx_count; i++) {
-        if (g_signal_ctx_list[i] &&
-            kc_chat_raise_signal(g_signal_ctx_list[i], sig) == 0)
-            return;
-    }
-    signal(sig, SIG_DFL);
-    raise(sig);
 }
